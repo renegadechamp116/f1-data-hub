@@ -20,9 +20,10 @@ export default function DriverCard({ driver }: { driver: Driver }) {
           <Image
             src={DRIVER_IMAGES[driver.driver_number] ?? driver.headshot_url}
             alt={driver.full_name}
-            width={110}
-            height={110}
-            className="object-contain relative z-10"
+            width={90}
+            height={90}
+            className="object-contain relative z-10 w-auto h-auto"
+            loading="eager"
             unoptimized
           />
         ) : (

@@ -119,7 +119,7 @@ export default function DriverModal({ driver, onClose, lastSessionKey }: Props) 
               alt={driver.full_name}
               width={140}
               height={140}
-              className="object-contain"
+              className="object-contain w-auto h-auto"
               unoptimized
             />
           ) : (

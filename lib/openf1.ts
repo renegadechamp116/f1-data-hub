@@ -1,6 +1,24 @@
 import { Driver, Race } from "@/types/f1";
 
 const BASE_URL = "https://api.openf1.org/v1";
+
+// 2025 Constructors Championship order
+export const TEAM_ORDER: Record<string, number> = {
+  "McLaren": 1,
+  "Ferrari": 2,
+  "Red Bull Racing": 3,
+  "Mercedes": 4,
+  "Aston Martin": 5,
+  "Alpine": 6,
+  "Haas F1 Team": 7,
+  "Racing Bulls": 8,
+  "Williams": 9,
+  "Kick Sauber": 10,
+  "Audi": 11,
+  "Cadillac": 12,
+};
+
+// Driver image overrides — local images take priority over API images
 export const DRIVER_IMAGES: Record<number, string> = {
   1:  "/drivers/1.png",
   3:  "/drivers/3.png",
@@ -30,27 +48,23 @@ export const DRIVER_IMAGES: Record<number, string> = {
   94: "/drivers/94.png",
 };
 
-// 2025 Constructors Championship order (used for sorting drivers)
-export const TEAM_ORDER: Record<string, number> = {
-  "McLaren":           1,
-  "Ferrari":           2,
-  "Red Bull Racing":   3,
-  "Mercedes":          4,
-  "Aston Martin":      5,
-  "Alpine":            6,
-  "Haas F1 Team":      7,
-  "Racing Bulls":      8,
-  "Williams":          9,
-  "Kick Sauber":       10,
-  "Audi":              11,
-  "Cadillac":          12,
-};
+// Waits a given number of milliseconds
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// The drivers endpoint requires a session_key — it doesn't accept just a year.
-// So we first fetch the last race session of that year, then get drivers from it.
+// Fetches a URL and retries once after 3 seconds if rate limited
+async function fetchWithRetry(url: string): Promise<Response> {
+  const res = await fetch(url);
+  if (res.status === 429) {
+    console.log("Rate limited — retrying in 3 seconds...");
+    await sleep(3000);
+    return fetch(url);
+  }
+  return res;
+}
+
+// Server-side driver fetch (uses Next.js cache)
 export async function getDrivers(year: number = 2026): Promise<Driver[]> {
   try {
-    // Step 1: Get all race sessions for that year
     const sessionsRes = await fetch(
       `${BASE_URL}/sessions?year=${year}&session_type=Race`,
       { next: { revalidate: 3600 } }
@@ -60,10 +74,8 @@ export async function getDrivers(year: number = 2026): Promise<Driver[]> {
     const sessions: Race[] = await sessionsRes.json();
     if (sessions.length === 0) return [];
 
-    // Step 2: Use the last race session of the year
     const lastSession = sessions[sessions.length - 1];
 
-    // Step 3: Get all drivers from that session
     const driversRes = await fetch(
       `${BASE_URL}/drivers?session_key=${lastSession.session_key}`,
       { next: { revalidate: 3600 } }
@@ -71,9 +83,40 @@ export async function getDrivers(year: number = 2026): Promise<Driver[]> {
     if (!driversRes.ok) return [];
 
     const data: Driver[] = await driversRes.json();
-    return data;
-  } catch (err) {
-    console.error("Failed to fetch drivers:", err);
+    const seen = new Set<number>();
+    return data.filter((driver) => {
+      if (!driver.driver_number) return false;
+      if (seen.has(driver.driver_number)) return false;
+      seen.add(driver.driver_number);
+      return true;
+    });
+  } catch {
+    return [];
+  }
+}
+
+// Client-safe version — no Next.js cache options
+export async function getDriversClient(year: number = 2026): Promise<Driver[]> {
+  try {
+    const sessionsRes = await fetchWithRetry(
+      `${BASE_URL}/sessions?year=${year}&session_type=Race`
+    );
+    if (!sessionsRes.ok) return [];
+
+    const sessions: Race[] = await sessionsRes.json();
+    if (sessions.length === 0) return [];
+
+    const lastSession = sessions[sessions.length - 1];
+
+    await sleep(500);
+
+    const driversRes = await fetchWithRetry(
+      `${BASE_URL}/drivers?session_key=${lastSession.session_key}`
+    );
+    if (!driversRes.ok) return [];
+
+    return await driversRes.json();
+  } catch {
     return [];
   }
 }
@@ -82,7 +125,6 @@ export async function getDriverByNumber(
   driverNumber: number
 ): Promise<Driver | null> {
   try {
-    // Get from the last 2026 race session
     const sessionsRes = await fetch(
       `${BASE_URL}/sessions?year=2026&session_type=Race`,
       { next: { revalidate: 3600 } }
@@ -114,46 +156,38 @@ export async function getRaces(year: number = 2026): Promise<Race[]> {
       { next: { revalidate: 3600 } }
     );
     if (!res.ok) return [];
-
-    const data: Race[] = await res.json();
-    return data;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message === "OPENF1_RESTRICTED") throw err;
+    return await res.json();
+  } catch {
     return [];
   }
 }
 
-function buildOpenF1ProxyUrl(
-  path: string,
-  params: Record<string, string | number | undefined>
-): string {
-  const searchParams = new URLSearchParams({ path });
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined) {
-      searchParams.set(key, String(value));
-    }
-  });
-  return `/api/openf1?${searchParams.toString()}`;
+export async function getRacesClient(year: number = 2026): Promise<Race[]> {
+  try {
+    const res = await fetchWithRetry(
+      `${BASE_URL}/sessions?year=${year}&session_type=Race`
+    );
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
 }
 
-// Get a driver's best lap time from their most recent race
 export async function getDriverBestLap(
   driverNumber: number,
   sessionKey: number
 ): Promise<number | null> {
   try {
     const res = await fetch(
-      buildOpenF1ProxyUrl("laps", {
-        session_key: sessionKey,
-        driver_number: driverNumber,
-      })
+      `${BASE_URL}/laps?session_key=${sessionKey}&driver_number=${driverNumber}`,
+      { next: { revalidate: 3600 } }
     );
     if (!res.ok) return null;
 
     const laps: { lap_duration: number | null; is_pit_out_lap: boolean }[] =
       await res.json();
 
-    // Filter out pit out laps and nulls, then find the fastest
     const valid = laps
       .filter((l) => l.lap_duration !== null && !l.is_pit_out_lap)
       .map((l) => l.lap_duration as number);
@@ -180,58 +214,13 @@ export async function getDriverCareerStats(nameAcronym: string): Promise<{
   }
 }
 
-// Client-safe version — no Next.js cache options
-export async function getDriversClient(year: number = 2026): Promise<Driver[]> {
-  try {
-    const sessionsRes = await fetch(
-      buildOpenF1ProxyUrl("sessions", {
-        year,
-        session_type: "Race",
-      })
-    );
-    if (sessionsRes.status === 401) throw new Error("OPENF1_RESTRICTED");
-    if (!sessionsRes.ok) return [];
-
-    const sessions: Race[] = await sessionsRes.json();
-    if (sessions.length === 0) return [];
-
-    const lastSession = sessions[sessions.length - 1];
-
-    const driversRes = await fetch(
-      buildOpenF1ProxyUrl("drivers", {
-        session_key: lastSession.session_key,
-      })
-    );
-    if (driversRes.status === 401) throw new Error("OPENF1_RESTRICTED");
-    if (!driversRes.ok) return [];
-
-    return await driversRes.json();
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message === "OPENF1_RESTRICTED") throw err;
-    return [];
-  }
-}
-
-export async function getRacesClient(year: number = 2026): Promise<Race[]> {
-  try {
-    const res = await fetch(
-      buildOpenF1ProxyUrl("sessions", {
-        year,
-        session_type: "Race",
-      })
-    );
-    if (res.status === 401) throw new Error("OPENF1_RESTRICTED");
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
-}
-
 export async function getSeasonRaces(year: number): Promise<{
   round: string;
   raceName: string;
-  Circuit: { circuitName: string; Location: { country: string; locality: string } };
+  Circuit: {
+    circuitName: string;
+    Location: { country: string; locality: string };
+  };
   date: string;
 }[]> {
   try {
@@ -246,7 +235,10 @@ export async function getSeasonRaces(year: number): Promise<{
   }
 }
 
-export async function getRaceResults(year: number, round: string): Promise<{
+export async function getRaceResults(
+  year: number,
+  round: string
+): Promise<{
   position: string;
   Driver: { givenName: string; familyName: string; nationality: string };
   Constructor: { name: string };

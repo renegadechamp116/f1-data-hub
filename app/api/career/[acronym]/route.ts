@@ -26,6 +26,7 @@ const DRIVER_ID_MAP: Record<string, string> = {
   HAD: "hadjar",
   DOO: "doohan",
   COL: "colapinto",
+  LIN: "lindblad",
 };
 
 const CHAMPIONSHIPS: Record<string, number> = {
@@ -54,6 +55,7 @@ const CHAMPIONSHIPS: Record<string, number> = {
   hadjar: 0,
   doohan: 0,
   colapinto: 0,
+  lindblad: 0,
 };
 
 // Fetches all pages from a Jolpica endpoint and returns every Race object

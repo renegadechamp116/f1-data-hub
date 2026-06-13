@@ -51,16 +51,7 @@ export const DRIVER_IMAGES: Record<number, string> = {
 // Waits a given number of milliseconds
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Fetches a URL and retries once after 3 seconds if rate limited
-async function fetchWithRetry(url: string): Promise<Response> {
-  const res = await fetch(url);
-  if (res.status === 429) {
-    console.log("Rate limited — retrying in 3 seconds...");
-    await sleep(3000);
-    return fetch(url);
-  }
-  return res;
-}
+
 
 // Server-side driver fetch (uses Next.js cache)
 export async function getDrivers(year: number = 2026): Promise<Driver[]> {
@@ -96,10 +87,11 @@ export async function getDrivers(year: number = 2026): Promise<Driver[]> {
 }
 
 // Client-safe version — no Next.js cache options
+// Client-safe version — routes through our proxy to avoid CORS
 export async function getDriversClient(year: number = 2026): Promise<Driver[]> {
   try {
-    const sessionsRes = await fetchWithRetry(
-      `${BASE_URL}/sessions?year=${year}&session_type=Race`
+    const sessionsRes = await fetch(
+      `/api/openf1?path=sessions&year=${year}&session_type=Race`
     );
     if (!sessionsRes.ok) return [];
 
@@ -108,10 +100,10 @@ export async function getDriversClient(year: number = 2026): Promise<Driver[]> {
 
     const lastSession = sessions[sessions.length - 1];
 
-    await sleep(500);
+    await sleep(300);
 
-    const driversRes = await fetchWithRetry(
-      `${BASE_URL}/drivers?session_key=${lastSession.session_key}`
+    const driversRes = await fetch(
+      `/api/openf1?path=drivers&session_key=${lastSession.session_key}`
     );
     if (!driversRes.ok) return [];
 
@@ -164,8 +156,8 @@ export async function getRaces(year: number = 2026): Promise<Race[]> {
 
 export async function getRacesClient(year: number = 2026): Promise<Race[]> {
   try {
-    const res = await fetchWithRetry(
-      `${BASE_URL}/sessions?year=${year}&session_type=Race`
+    const res = await fetch(
+      `/api/openf1?path=sessions&year=${year}&session_type=Race`
     );
     if (!res.ok) return [];
     return await res.json();

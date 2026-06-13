@@ -1,30 +1,28 @@
 import { NextResponse } from "next/server";
 
-const OPENF1_BASE = "https://api.openf1.org/v1";
-const ALLOWED_ENDPOINTS = new Set(["sessions", "drivers", "laps"]);
-
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const path = url.searchParams.get("path");
-
-  if (!path || !ALLOWED_ENDPOINTS.has(path)) {
-    return NextResponse.json(
-      { error: "Invalid OpenF1 endpoint" }, 
-      { status: 400 }
-    );
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  
+  // Build the OpenF1 URL from query params
+  const path = searchParams.get("path");
+  if (!path) {
+    return NextResponse.json({ error: "No path provided" }, { status: 400 });
   }
- 
-  const queryParams = new URLSearchParams(url.searchParams);
-  queryParams.delete("path");
 
-  const externalUrl = `${OPENF1_BASE}/${path}${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
-  const externalRes = await fetch(externalUrl);
+  // Remove 'path' from params and pass the rest to OpenF1
+  const params = new URLSearchParams(searchParams);
+  params.delete("path");
 
-  const contentType = externalRes.headers.get("content-type") ?? "application/json";
-  const body = await externalRes.text();
+  const url = `https://api.openf1.org/v1/${path}?${params.toString()}`;
 
-  return new NextResponse(body, {
-    status: externalRes.status,
-    headers: { "content-type": contentType },
-  });
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return NextResponse.json({ error: "OpenF1 error" }, { status: res.status });
+    }
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
+  }
 }

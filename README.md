@@ -31,7 +31,7 @@ Coming soon on Vercel.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/YourUsername/f1-data-hub.git
+git clone https://github.com/sdprojects12/f1-data-hub
 cd f1-data-hub
 ```
 

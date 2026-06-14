@@ -8,12 +8,15 @@ import { TEAMS } from "@/data/teams";
 import { getDriversClient } from "@/lib/openf1";
 import DriverCard from "@/components/DriverCard";
 import TeamCard from "@/components/TeamCard";
+import DriverModal from "@/components/DriverModal";
+import TeamModal from "@/components/TeamModal";
 
 export default function FavoritesPage() {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [selected, setSelected] = useState<Driver | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<typeof TEAMS[keyof typeof TEAMS] | null>(null);
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -25,7 +28,6 @@ export default function FavoritesPage() {
     load();
   }, []);
 
-  // Re-sync favorites from localStorage when something changes
   const refresh = () => setFavorites(getFavorites());
 
   const favoriteDrivers = drivers.filter((d) =>
@@ -106,7 +108,7 @@ export default function FavoritesPage() {
                 {favoriteDrivers.map((driver) => (
                   <div
                     key={driver.driver_number}
-                    onClick={refresh}
+                    onClick={() => setSelected(driver)}
                   >
                     <DriverCard driver={driver} />
                   </div>
@@ -129,7 +131,7 @@ export default function FavoritesPage() {
                 {favoriteTeams.map((team) => (
                   <div
                     key={team.name}
-                    onClick={refresh}
+                    onClick={() => setSelectedTeam(team)}
                   >
                     <TeamCard team={team} />
                   </div>
@@ -140,6 +142,26 @@ export default function FavoritesPage() {
 
         </div>
       )}
+
+      {/* Driver modal */}
+      <DriverModal
+        driver={selected}
+        onClose={() => {
+          setSelected(null);
+          refresh();
+        }}
+      />
+
+      {/* Team modal*/}
+      <TeamModal
+        team={selectedTeam}
+        drivers={drivers}
+        onClose={() => {
+          setSelectedTeam(null);
+          refresh();
+        }}
+      />
+
     </main>
   );
 }
